@@ -77,7 +77,13 @@ jobs:
           export ALLOW_MISSING_DEPENDENCIES=true
           set +u
           source build/envsetup.sh
-          lunch twrp_lancelot-eng
+          REL="ap2a"
+          if [ ! -f "build/release/build_config/${REL}.scl" ]; then
+            REL=$(ls build/release/build_config/*.scl 2>/dev/null | head -n1 | xargs -r basename -s .scl || true)
+            [ -z "$REL" ] && REL="trunk_staging"
+          fi
+          echo "Using TARGET_RELEASE=$REL"
+          lunch "twrp_lancelot-${REL}-eng"
           mka recoveryimage
 
       - name: Check Output Size
