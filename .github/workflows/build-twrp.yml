@@ -32,7 +32,11 @@ jobs:
           sudo docker image prune -a -f || true
           sudo swapoff -a || true
           sudo rm -f /mnt/swapfile || true
-          sudo fallocate -l 4G /mnt/swapfile || sudo dd if=/dev/zero of=/mnt/swapfile bs=1M count=4096
+          MNT_AVAIL_MB=$(df -BM --output=avail /mnt | tail -n1 | tr -dc '0-9')
+          SWAP_MB=$((MNT_AVAIL_MB - 1024))
+          if [ "$SWAP_MB" -gt 12288 ]; then SWAP_MB=12288; fi
+          echo "Allocating ${SWAP_MB}M swap on /mnt/swapfile (avail ${MNT_AVAIL_MB}M)"
+          sudo fallocate -l "${SWAP_MB}M" /mnt/swapfile || sudo dd if=/dev/zero of=/mnt/swapfile bs=1M count="$SWAP_MB"
           sudo chmod 600 /mnt/swapfile
           sudo mkswap /mnt/swapfile
           sudo swapon /mnt/swapfile
@@ -88,6 +92,9 @@ jobs:
         run: |
           cd "$BUILD_ROOT"
           export ALLOW_MISSING_DEPENDENCIES=true
+          export GOGC=20
+          export GOMEMLIMIT=10GiB
+          export GOMAXPROCS=2
           set +u
           source build/envsetup.sh
           REL="ap2a"
@@ -97,7 +104,7 @@ jobs:
           fi
           echo "Using TARGET_RELEASE=$REL"
           lunch "twrp_lancelot-${REL}-eng"
-          mka recoveryimage -j3
+          mka recoveryimage -j2
 
       - name: Check Output Size
         run: |
