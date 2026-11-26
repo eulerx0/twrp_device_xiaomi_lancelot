@@ -1,15 +1,15 @@
 import /init.microtrust.rc
 
 on init
-    export LD_LIBRARY_PATH /system/lib64:/vendor/lib64:/vendor/lib64/hw:/system/lib64/hw
+    export LD_LIBRARY_PATH /vendor/lib64:/vendor/lib64/hw:/system/lib64:/system/lib64/hw
     setprop sys.usb.ffs.aio_compat 1
     setprop sys.usb.configfs 1
 
 on early-fs
     start vold
 
-on late-fs
-    exec_start wait_for_keymaster
+on post-fs
+    exec u:r:recovery:s0 -- /system/bin/sh /system/bin/prep_keymaster.sh
     mount_all /vendor/etc/fstab.${ro.boot.hardware.platform} --late
 
 on property:ro.crypto.state=encrypted && property:ro.crypto.type=file
@@ -21,6 +21,7 @@ service gatekeeper-1-0 /vendor/bin/hw/android.hardware.gatekeeper@1.0-service
     user root
     group root
     disabled
+    setenv LD_LIBRARY_PATH /vendor/lib64:/vendor/lib64/hw:/system/lib64:/system/lib64/hw
     seclabel u:r:recovery:s0
 
 service keymaster-4-0 /vendor/bin/hw/android.hardware.keymaster@4.0-service.beanpod
@@ -29,6 +30,7 @@ service keymaster-4-0 /vendor/bin/hw/android.hardware.keymaster@4.0-service.bean
     user root
     group root drmrpc
     disabled
+    setenv LD_LIBRARY_PATH /vendor/lib64:/vendor/lib64/hw:/system/lib64:/system/lib64/hw
     seclabel u:r:recovery:s0
 
 service soter-1-0 /vendor/bin/hw/vendor.microtrust.hardware.soter@1.0-service
@@ -36,16 +38,10 @@ service soter-1-0 /vendor/bin/hw/vendor.microtrust.hardware.soter@1.0-service
     user root
     group root
     disabled
+    setenv LD_LIBRARY_PATH /vendor/lib64:/vendor/lib64/hw:/system/lib64:/system/lib64/hw
     seclabel u:r:recovery:s0
 
-service beanpod_check_keybox_service /vendor/bin/bp_kmsetkey_ca -c
-    class late_start
-    user root
-    group root
-    oneshot
-    seclabel u:r:recovery:s0
-
-on property:vendor.sys.listener.registered=true
+on property:twrp.keymaster.ready=1
     start keymaster-4-0
     start gatekeeper-1-0
     start soter-1-0
@@ -62,7 +58,7 @@ on property:ro.crypto.state=unencrypted
     stop gatekeeper-1-0
     stop soter-1-0
 
-on property:twrp.all.users.decrypted=true
+on property:twrp.decrypt.done=true && property:twrp.all.users.decrypted=true
     stop teei_daemon
     stop keymaster-4-0
     stop gatekeeper-1-0

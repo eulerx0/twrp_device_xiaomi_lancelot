@@ -2,7 +2,7 @@
     Input:
         device/xiaomi/mt6768-common/lights/android.hardware.light-service.mt6768.xml
 -->
-<manifest version="8.0" type="device">
+<manifest version="2.0" type="device">
     <hal format="aidl">
         <name>android.hardware.light</name>
         <version>2</version>
