@@ -5,6 +5,18 @@
 OS_REL="15"
 SEC_PATCH="2025-02-05"
 
+# Wait up to 15s for hwservicemanager and Microtrust TEE initialization
+i=0
+while [ $i -lt 75 ]; do
+    HWS=$(getprop hwservicemanager.ready)
+    TEE=$(getprop vendor.soter.teei.init)
+    if [ "$HWS" = "true" ] && [ "$TEE" = "INIT_OK" ]; then
+        break
+    fi
+    sleep 0.2
+    i=$((i + 1))
+done
+
 if [ -e /dev/block/mapper/system ]; then
     mkdir -p /mnt_sys_tmp
     if mount -t ext4 -o ro /dev/block/mapper/system /mnt_sys_tmp 2>/dev/null; then
@@ -29,18 +41,5 @@ fi
 /system/bin/resetprop ro.build.version.security_patch "$SEC_PATCH"
 /system/bin/resetprop ro.vendor.build.security_patch "$SEC_PATCH"
 
-# Wait up to 6s for hwservicemanager and Microtrust TEE initialization
-i=0
-while [ $i -lt 30 ]; do
-    HWS=$(getprop hwservicemanager.ready)
-    TEE=$(getprop vendor.soter.teei.init)
-    if [ "$HWS" = "true" ] && [ "$TEE" = "INIT_OK" ]; then
-        break
-    fi
-    sleep 0.2
-    i=$((i + 1))
-done
-
-/vendor/bin/bp_kmsetkey_ca -c >/dev/null 2>&1 || true
+LD_LIBRARY_PATH=/vendor/lib64:/vendor/lib64/hw:/system/lib64:/system/lib64/hw /vendor/bin/bp_kmsetkey_ca -c >/dev/null 2>&1 || true
 setprop twrp.keymaster.ready 1
-sleep 2

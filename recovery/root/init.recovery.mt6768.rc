@@ -1,7 +1,7 @@
 import /init.microtrust.rc
 
 on init
-    export LD_LIBRARY_PATH /vendor/lib64:/vendor/lib64/hw:/system/lib64:/system/lib64/hw
+    export LD_LIBRARY_PATH /system/lib64:/vendor/lib64:/vendor/lib64/hw:/system/lib64/hw
     setprop sys.usb.ffs.aio_compat 1
     setprop sys.usb.configfs 1
 
@@ -9,8 +9,11 @@ on early-fs
     start vold
 
 on post-fs
-    exec u:r:recovery:s0 -- /system/bin/sh /system/bin/prep_keymaster.sh
+    exec u:r:recovery:s0 -- /system/bin/resetprop ro.build.version.release 15
+    exec u:r:recovery:s0 -- /system/bin/resetprop ro.build.version.security_patch 2025-02-05
+    exec u:r:recovery:s0 -- /system/bin/resetprop ro.vendor.build.security_patch 2025-02-05
     mount_all /vendor/etc/fstab.${ro.boot.hardware.platform} --late
+    start prep_keymaster
 
 on property:ro.crypto.state=encrypted && property:ro.crypto.type=file
     install_keyring
@@ -39,6 +42,14 @@ service soter-1-0 /vendor/bin/hw/vendor.microtrust.hardware.soter@1.0-service
     group root
     disabled
     setenv LD_LIBRARY_PATH /vendor/lib64:/vendor/lib64/hw:/system/lib64:/system/lib64/hw
+    seclabel u:r:recovery:s0
+
+service prep_keymaster /system/bin/sh /system/bin/prep_keymaster.sh
+    class main
+    user root
+    group root
+    oneshot
+    disabled
     seclabel u:r:recovery:s0
 
 on property:twrp.keymaster.ready=1
