@@ -10,24 +10,29 @@ jobs:
   build:
     name: Build TWRP Recovery
     runs-on: ubuntu-22.04
-    timeout-minutes: 120
+    timeout-minutes: 180
 
     steps:
-      - name: Maximize Build Space & Swap
-        uses: easimon/maximize-build-space@v10
-        with:
-          root-reserve-mb: 10240
-          swap-size-mb: 10240
-          remove-dotnet: 'true'
-          remove-android: 'true'
-          remove-haskell: 'true'
-          remove-codeql: 'true'
+      - name: Free Disk Space & Configure Swap
+        run: |
+          df -h
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/share/swift || true
+          sudo docker image prune -a -f || true
+          sudo swapoff -a || true
+          sudo rm -f /mnt/swapfile || true
+          sudo fallocate -l 6G /mnt/swapfile || sudo dd if=/dev/zero of=/mnt/swapfile bs=1M count=6144
+          sudo chmod 600 /mnt/swapfile
+          sudo mkswap /mnt/swapfile
+          sudo swapon /mnt/swapfile
+          df -h
+          free -h
 
       - name: Install Dependencies
         run: |
+          export DEBIAN_FRONTEND=noninteractive
           sudo apt-get update
-          sudo apt-get install -y \
-            bc bison build-essential ccache curl flex g++-multilib gcc-multilib \
+          sudo apt-get install -y --no-install-recommends \
+            bc bison build-essential ca-certificates ccache curl flex g++-multilib gcc-multilib \
             git git-lfs gnupg gperf imagemagick lib32ncurses5-dev lib32readline-dev \
             lib32z1-dev libelf-dev liblz4-tool libncurses5 libncurses5-dev \
             libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync \
@@ -43,26 +48,32 @@ jobs:
           git config --global user.email "builder@users.noreply.github.com"
           git config --global color.ui false
 
-      - name: Sync TWRP 14.1 Minimal Manifest
-        run: |
-          mkdir -p ~/twrp
-          cd ~/twrp
-          repo init --depth=1 -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git -b twrp-14.1
-          repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune -j$(nproc --all)
-
       - name: Checkout Device Tree
         uses: actions/checkout@v4
         with:
           path: twrp_device_tree
 
+      - name: Sync TWRP 14.1 Minimal Manifest
+        run: |
+          BUILD_ROOT="/home/runner/twrp"
+          if [ "$(df -BG --output=avail /mnt | tail -n1 | tr -dc '0-9')" -gt "$(df -BG --output=avail /home/runner | tail -n1 | tr -dc '0-9')" ]; then
+            BUILD_ROOT="/mnt/twrp"
+          fi
+          echo "BUILD_ROOT=$BUILD_ROOT" >> $GITHUB_ENV
+          sudo mkdir -p "$BUILD_ROOT"
+          sudo chown -R "$(whoami):$(id -gn)" "$BUILD_ROOT"
+          cd "$BUILD_ROOT"
+          repo init --depth=1 -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git -b twrp-14.1
+          repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune -j$(nproc --all)
+
       - name: Copy Device Tree into Build Workspace
         run: |
-          mkdir -p ~/twrp/device/xiaomi/lancelot
-          rsync -av --exclude='.git' --exclude='.github' "$GITHUB_WORKSPACE/twrp_device_tree/" ~/twrp/device/xiaomi/lancelot/
+          mkdir -p "$BUILD_ROOT/device/xiaomi/lancelot"
+          rsync -av --exclude='.git' --exclude='.github' "$GITHUB_WORKSPACE/twrp_device_tree/" "$BUILD_ROOT/device/xiaomi/lancelot/"
 
       - name: Build TWRP Recovery Image
         run: |
-          cd ~/twrp
+          cd "$BUILD_ROOT"
           export ALLOW_MISSING_DEPENDENCIES=true
           set +u
           source build/envsetup.sh
@@ -71,14 +82,14 @@ jobs:
 
       - name: Check Output Size
         run: |
-          ls -lh ~/twrp/out/target/product/lancelot/recovery.img
+          ls -lh "$BUILD_ROOT/out/target/product/lancelot/recovery.img"
 
       - name: Upload Recovery Artifact
         uses: actions/upload-artifact@v4
         with:
           name: twrp-lancelot-a15-14.1
           path: |
-            ~/twrp/out/target/product/lancelot/recovery.img
-            ~/twrp/out/target/product/lancelot/recovery.img.sha256sum
+            ${{ env.BUILD_ROOT }}/out/target/product/lancelot/recovery.img
+            ${{ env.BUILD_ROOT }}/out/target/product/lancelot/recovery.img.sha256sum
           if-no-files-found: warn
           retention-days: 30
