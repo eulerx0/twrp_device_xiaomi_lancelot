@@ -1,4 +1,4 @@
-name: Build TWRP 14.1 for Redmi 9 (lancelot)
+name: Build TWRP 12.1 (Android 15 Compatible) for Redmi 9 (lancelot)
 
 on:
   workflow_dispatch:
@@ -71,13 +71,13 @@ jobs:
         with:
           path: twrp_device_tree
 
-      - name: Sync TWRP 14.1 Minimal Manifest & Prune Git Metadata
+      - name: Sync TWRP 12.1 Minimal Manifest & Prune Git Metadata
         run: |
           BUILD_ROOT="/home/runner/twrp"
           echo "BUILD_ROOT=$BUILD_ROOT" >> $GITHUB_ENV
           mkdir -p "$BUILD_ROOT"
           cd "$BUILD_ROOT"
-          repo init --depth=1 -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git -b twrp-14.1
+          repo init --depth=1 -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git -b twrp-12.1
           repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune -j$(nproc --all)
           rm -rf "$BUILD_ROOT/.repo"
           find "$BUILD_ROOT" -name ".git" -prune -exec rm -rf {} +
@@ -94,27 +94,22 @@ jobs:
           export ALLOW_MISSING_DEPENDENCIES=true
           export GOGC=20
           export GOMEMLIMIT=10GiB
-          export GOMAXPROCS=2
           set +u
           source build/envsetup.sh
-          REL="ap2a"
-          if [ ! -f "build/release/build_config/${REL}.scl" ]; then
-            REL=$(ls build/release/build_config/*.scl 2>/dev/null | head -n1 | xargs -r basename -s .scl || true)
-            [ -z "$REL" ] && REL="trunk_staging"
-          fi
-          echo "Using TARGET_RELEASE=$REL"
-          lunch "twrp_lancelot-${REL}-eng"
-          mka recoveryimage -j2
+          lunch twrp_lancelot-eng
+          mka recoveryimage -j3
 
       - name: Check Output Size
         run: |
           ls -lh "$BUILD_ROOT/out/target/product/lancelot/recovery.img"
+          sha256sum "$BUILD_ROOT/out/target/product/lancelot/recovery.img" > "$BUILD_ROOT/out/target/product/lancelot/recovery.img.sha256sum"
+          cat "$BUILD_ROOT/out/target/product/lancelot/recovery.img.sha256sum"
           df -h
 
       - name: Upload Recovery Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: twrp-lancelot-a15-14.1
+          name: twrp-lancelot-a15-twrp12.1
           path: |
             ${{ env.BUILD_ROOT }}/out/target/product/lancelot/recovery.img
             ${{ env.BUILD_ROOT }}/out/target/product/lancelot/recovery.img.sha256sum
