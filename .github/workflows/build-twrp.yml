@@ -1,0 +1,84 @@
+name: Build TWRP 14.1 for Redmi 9 (lancelot)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    name: Build TWRP Recovery
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+
+    steps:
+      - name: Maximize Build Space & Swap
+        uses: easimon/maximize-build-space@v10
+        with:
+          root-reserve-mb: 10240
+          swap-size-mb: 10240
+          remove-dotnet: 'true'
+          remove-android: 'true'
+          remove-haskell: 'true'
+          remove-codeql: 'true'
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            bc bison build-essential ccache curl flex g++-multilib gcc-multilib \
+            git git-lfs gnupg gperf imagemagick lib32ncurses5-dev lib32readline-dev \
+            lib32z1-dev libelf-dev liblz4-tool libncurses5 libncurses5-dev \
+            libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync \
+            schedtool squashfs-tools xsltproc zip zlib1g-dev python3 python-is-python3
+          mkdir -p ~/.local/bin
+          curl -sSL https://storage.googleapis.com/git-repo-downloads/repo -o ~/.local/bin/repo
+          chmod a+x ~/.local/bin/repo
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "TWRP Builder"
+          git config --global user.email "builder@users.noreply.github.com"
+          git config --global color.ui false
+
+      - name: Sync TWRP 14.1 Minimal Manifest
+        run: |
+          mkdir -p ~/twrp
+          cd ~/twrp
+          repo init --depth=1 -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git -b twrp-14.1
+          repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune -j$(nproc --all)
+
+      - name: Checkout Device Tree
+        uses: actions/checkout@v4
+        with:
+          path: twrp_device_tree
+
+      - name: Copy Device Tree into Build Workspace
+        run: |
+          mkdir -p ~/twrp/device/xiaomi/lancelot
+          rsync -av --exclude='.git' --exclude='.github' "$GITHUB_WORKSPACE/twrp_device_tree/" ~/twrp/device/xiaomi/lancelot/
+
+      - name: Build TWRP Recovery Image
+        run: |
+          cd ~/twrp
+          export ALLOW_MISSING_DEPENDENCIES=true
+          set +u
+          source build/envsetup.sh
+          lunch twrp_lancelot-eng
+          mka recoveryimage
+
+      - name: Check Output Size
+        run: |
+          ls -lh ~/twrp/out/target/product/lancelot/recovery.img
+
+      - name: Upload Recovery Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: twrp-lancelot-a15-14.1
+          path: |
+            ~/twrp/out/target/product/lancelot/recovery.img
+            ~/twrp/out/target/product/lancelot/recovery.img.sha256sum
+          if-no-files-found: warn
+          retention-days: 30
